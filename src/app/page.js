@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { supabase } from '@/lib/supabase'
 import { 
   Calendar as CalendarIcon, 
   Clock, 
@@ -208,7 +209,7 @@ export default function Home() {
   // ESTADOS DE NAVEGAÇÃO RESPONSIVA
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
-  // ESTADO DOS AGENDAMENTOS
+  // ESTADO DOS AGENDAMENTOS (BUSCANDO DIRETAMENTE DO SUPABASE)
   const [appointments, setAppointments] = useState([])
   const [formData, setFormData] = useState({
     fullName: '',
@@ -221,25 +222,25 @@ export default function Home() {
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [openAccordion, setOpenAccordion] = useState(null)
 
+  // Carregar agendamentos do Supabase ao abrir o site
   useEffect(() => {
-    const saved = localStorage.getItem('thaysa_agendamentos')
-    if (saved) {
-      try {
-        setAppointments(JSON.parse(saved))
-      } catch (e) {
-        setAppointments([])
-      }
-    }
+    fetchAppointmentsFromSupabase()
   }, [])
 
-  const saveAppointmentsToStorage = (newAppointments) => {
-    setAppointments(newAppointments)
-    localStorage.setItem('thaysa_agendamentos', JSON.stringify(newAppointments))
+  const fetchAppointmentsFromSupabase = async () => {
+    const { data, error } = await supabase
+      .from('agendamentos')
+      .select('*')
+
+    if (!error && data) {
+      setAppointments(data)
+    }
   }
 
+  // Verifica se o horário já está ocupado na tabela do Supabase
   const isSlotBooked = (dateStr, timeStr) => {
     return appointments.some(
-      (app) => app.appointmentDate === dateStr && app.appointmentTime === timeStr
+      (app) => app.appointment_date === dateStr && app.appointment_time === timeStr
     )
   }
 
@@ -247,7 +248,8 @@ export default function Home() {
     setOpenAccordion(openAccordion === id ? null : id)
   }
 
-  const handleSubmit = (e) => {
+  // Salvar agendamento diretamente no Supabase
+  const handleSubmit = async (e) => {
     e.preventDefault()
 
     if (isSlotBooked(formData.appointmentDate, formData.appointmentTime)) {
@@ -255,21 +257,25 @@ export default function Home() {
       return
     }
 
-    const newApp = {
-      id: Date.now().toString(),
-      fullName: formData.fullName,
-      phone: formData.phone,
-      serviceName: formData.serviceName,
-      appointmentDate: formData.appointmentDate,
-      appointmentTime: formData.appointmentTime,
-      createdAt: new Date().toISOString(),
-      status: 'Confirmado',
-      source: 'SITE'
-    }
+    const { error } = await supabase
+      .from('agendamentos')
+      .insert([
+        {
+          full_name: formData.fullName,
+          phone: formData.phone || '(00) 00000-0000',
+          service_name: formData.serviceName,
+          appointment_date: formData.appointmentDate,
+          appointment_time: formData.appointmentTime,
+          status: 'Confirmado'
+        }
+      ])
 
-    const updated = [newApp, ...appointments]
-    saveAppointmentsToStorage(updated)
-    setIsSubmitted(true)
+    if (error) {
+      alert('Erro ao realizar o agendamento: ' + error.message)
+    } else {
+      setIsSubmitted(true)
+      fetchAppointmentsFromSupabase() // Atualiza os horários ocupados em tempo real
+    }
   }
 
   return (
@@ -764,7 +770,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* RODAPÉ LIMPO SEM BOTÃO ADMIN */}
+      {/* RODAPÉ */}
       <footer className="bg-gray-900 text-white py-10 px-4 text-center border-t border-gray-800">
         <div className="max-w-7xl mx-auto">
           <p className="text-xs sm:text-sm text-gray-300 font-medium">
